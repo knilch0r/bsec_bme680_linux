@@ -7,8 +7,8 @@
  *
  */
 
-/*#define _POSIX_C_SOURCE 200809L*/
 #define _XOPEN_SOURCE 700
+#include <unistd.h>
 
 /* header files */
 
@@ -17,7 +17,6 @@
 #include <time.h>
 #include <fcntl.h>
 #include <string.h>
-#include <unistd.h>
 #include <inttypes.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -28,11 +27,11 @@
 /* definitions */
 
 #define DESTZONE "TZ=Europe/Berlin"
-#define temp_offset (5.0f)
-#define sample_rate_mode (BSEC_SAMPLE_RATE_LP)
+#define temp_offset (.5f)
+#define sample_rate_mode (BSEC_SAMPLE_RATE_ULP)
 
 int g_i2cFid; // I2C Linux device handle
-int i2c_address = BME680_I2C_ADDR_PRIMARY;
+int i2c_address = BME680_I2C_ADDR_SECONDARY;
 char *filename_state = "bsec_iaq.state";
 char *filename_config = "bsec_iaq.config";
 
@@ -135,11 +134,7 @@ int8_t bus_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *reg_data_ptr,
  */
 void _sleep(uint32_t t_ms)
 {
-  struct timespec ts;
-  ts.tv_sec = 0;
-  /* mod because nsec must be in the range 0 to 999999999 */
-  ts.tv_nsec = (t_ms % 1000) * 1000000L;
-  nanosleep(&ts, NULL);
+  usleep(t_ms);
 }
 
 /*
@@ -187,10 +182,6 @@ void output_ready(int64_t timestamp, float iaq, uint8_t iaq_accuracy,
                   float static_iaq, float co2_equivalent,
                   float breath_voc_equivalent)
 {
-  //int64_t timestamp_s = timestamp / 1000000000;
-  ////int64_t timestamp_ms = timestamp / 1000;
-
-  //time_t t = timestamp_s;
   /*
    * timestamp for localtime only makes sense if get_timestamp_us() uses
    * CLOCK_REALTIME
@@ -198,18 +189,16 @@ void output_ready(int64_t timestamp, float iaq, uint8_t iaq_accuracy,
   time_t t = time(NULL);
   struct tm tm = *localtime(&t);
 
-  printf("%d-%02d-%02d %02d:%02d:%02d,", tm.tm_year + 1900,tm.tm_mon + 1,
+  printf("%d-%02d-%02d %02d:%02d:%02d", tm.tm_year + 1900,tm.tm_mon + 1,
          tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec); /* localtime */
-  printf("[IAQ (%d)]: %.2f", iaq_accuracy, iaq);
-  printf(",[T degC]: %.2f,[H %%rH]: %.2f,[P hPa]: %.2f", temperature,
-         humidity,pressure / 100);
-  printf(",[G Ohms]: %.0f", gas);
-  printf(",[S]: %d", bsec_status);
-  //printf(",[static IAQ]: %.2f", static_iaq);
-  printf(",[eCO2 ppm]: %.15f", co2_equivalent);
-  printf(",[bVOCe ppm]: %.25f", breath_voc_equivalent);
-  //printf(",%" PRId64, timestamp);
-  //printf(",%" PRId64, timestamp_ms);
+  printf(": %.2f °C", temperature);
+  printf(", %.2f %%rH", humidity);
+  printf(", %.2f hPa", pressure / 100);
+  printf(", %.0f Ohm", gas);
+  printf(", S %d", bsec_status);
+  printf(" IAQ (%d) %.2f", iaq_accuracy, iaq);
+  printf(" eCO2 %.5f", co2_equivalent);
+  printf(" bVOCe %.5f", breath_voc_equivalent);
   printf("\r\n");
   fflush(stdout);
 }
@@ -341,11 +330,8 @@ int main()
 
   /* Call to endless loop function which reads and processes data based on
    * sensor settings.
-   * State is saved every 10.000 samples, which means every 10.000 * 3 secs
-   * = 500 minutes (depending on the config).
-   *
    */
-  bsec_iot_loop(_sleep, get_timestamp_us, output_ready, state_save, 10000);
+  bsec_iot_loop(_sleep, get_timestamp_us, output_ready, state_save, 10);
 
   i2cClose();
   return 0;
